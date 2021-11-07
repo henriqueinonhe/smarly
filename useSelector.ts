@@ -1,19 +1,11 @@
 import { zip } from "lodash";
-import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import { StoreContextValue } from "./StoreContext";
-import { StoreContextTable } from "./StoreContextTable";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useStoreContext } from "./useStoreContext";
 
 export type Selector<S, T> = (state: S) => T;
 
 export function useSelector<S, T>(name: string, selector: Selector<S, T>): T {
-  const StoreContext = StoreContextTable.getContext(name);
-  const storeContextValue = useContext(StoreContext) as StoreContextValue<S>;
-
-  if (!storeContextValue) {
-    throw new Error("There is no store available in this context!");
-  }
-
-  const { store } = storeContextValue;
+  const { store } = useStoreContext<S>(name);
 
   const currentSelectedStateRef = useRef(selector(store.getState()));
 

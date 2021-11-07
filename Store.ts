@@ -1,6 +1,11 @@
 export class Store<S> {
-  constructor(initialState: S) {
-    this.state = initialState;
+  constructor(initialState: S | (() => S)) {
+    if (isFunction(initialState)) {
+      this.state = initialState();
+    } else {
+      this.state = initialState;
+    }
+
     this.subscribers = new Set();
   }
 
@@ -8,8 +13,13 @@ export class Store<S> {
     return this.state;
   }
 
-  public setState(state: S): void {
-    this.state = state;
+  public setState(state: S | ((state: S) => S)): void {
+    if (isSetter(state)) {
+      this.state = state(this.state);
+    } else {
+      this.state = state;
+    }
+
     this.notifySubscribers();
   }
 
@@ -19,7 +29,6 @@ export class Store<S> {
 
   public subscribe(subscriber: Subscriber<S>): void {
     this.subscribers.add(subscriber);
-    console.log(this.subscribers);
   }
 
   public unsubscribe(subscriber: Subscriber<S>): void {
@@ -31,3 +40,11 @@ export class Store<S> {
 }
 
 export type Subscriber<T> = (state: T) => void;
+
+function isFunction<S>(initialState: S | (() => S)): initialState is () => S {
+  return typeof initialState === "function";
+}
+
+function isSetter<S>(state: S | ((state: S) => S)): state is (state: S) => S {
+  return typeof state === "function";
+}

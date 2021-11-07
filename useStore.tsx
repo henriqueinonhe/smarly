@@ -5,13 +5,13 @@ import { StoreContextTable } from "./StoreContextTable";
 
 export type UseStoreReturnType<S> = {
   getState: () => S;
-  setState: (state: S) => void;
+  setState: (state: S | ((state: S) => S)) => void;
   StoreContextProvider: (props: { children: React.ReactNode }) => JSX.Element;
 };
 
 export function useStore<S>(
   name: string,
-  initialState: S
+  initialState: S | (() => S)
 ): UseStoreReturnType<S> {
   const storeRef = useRef(new Store(initialState));
   const store = storeRef.current;
@@ -19,7 +19,7 @@ export function useStore<S>(
   const getState = useCallback(() => store.getState(), [store]);
 
   const setState = useCallback(
-    (state: S) => {
+    (state: S | ((state: S) => S)) => {
       store.setState(state);
     },
     [store]

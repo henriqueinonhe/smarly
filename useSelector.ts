@@ -1,54 +1,90 @@
-import { zip } from "lodash";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useStoreContext } from "./useStoreContext";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { StoreContext } from "./StoreContext";
+
+export type UseSelector<S> = <T>(selector: Selector<S, T>) => T;
 
 export type Selector<S, T> = (state: S) => T;
 
-export function useSelector<S, T>(name: string, selector: Selector<S, T>): T {
-  const { store } = useStoreContext<S>(name);
+type Dependencies<S> = {
+  StoreContext: StoreContext<S>;
+};
 
-  const currentSelectedStateRef = useRef(selector(store.getState()));
+export function makeUseSelector<S>({
+  StoreContext,
+}: Dependencies<S>): UseSelector<S> {
+  return <T>(selector: Selector<S, T>) => {
+    const storeContextValue = useContext(StoreContext);
 
-  const [, set] = useState({});
-  const forceRender = useCallback(() => {
-    set({});
-  }, []);
+    if (!storeContextValue) {
+      throw new Error("There is no store available in this context!");
+    }
 
-  useEffect(() => {
-    const subscriber = (state: S) => {
-      const currentSelectedState = currentSelectedStateRef.current;
-      const newSelectedState = selector(state);
+    const { store } = storeContextValue;
 
-      if (currentSelectedState !== newSelectedState) {
-        currentSelectedStateRef.current = newSelectedState;
-        forceRender();
+    const [, set] = useState({});
+    const forceRender = useCallback(() => set({}), []);
+
+    const latestStateRef = useRef<S | null>(null);
+    const latestSelectorRef = useRef<Selector<S, T> | null>(null);
+    const latestSelectedStateRef = useRef<T | null>(null);
+    const latestSubscriptionCallbackErrorRef = useRef<unknown | null>(null);
+
+    const latestState = latestStateRef.current;
+    const latestSelector = latestSelectorRef.current;
+    const state = store.getState();
+    const latestSubscriptionCallbackError =
+      latestSubscriptionCallbackErrorRef.current;
+
+    if (latestSubscriptionCallbackError) {
+      throw latestSubscriptionCallbackError;
+    }
+
+    if (state !== latestState || selector !== latestSelector) {
+      latestStateRef.current = state;
+      latestSelectorRef.current = selector;
+      latestSelectedStateRef.current = selector(state);
+    }
+
+    useEffect(() => {
+      const checkForUpdates = (state: S) => {
+        try {
+          const latestSelectedState = latestSelectedStateRef.current!;
+          const latestSelector = latestSelectorRef.current!;
+          const newSelectedState = latestSelector(state);
+
+          if (latestSelectedState !== newSelectedState) {
+            latestSelectedStateRef.current = newSelectedState;
+            forceRender();
+          }
+        } catch (error) {
+          latestSubscriptionCallbackErrorRef.current = error;
+        }
+      };
+
+      store.subscribe(checkForUpdates);
+
+      // This is called here because:
+      // The subscription to the store
+      // happens inside a useEffect, so if a component
+      // that invokes useSelector updates the state inside
+      // a useEffect that is called BEFORE this useSelector,
+      // this state update won't trigger checkForUpdates.
+      // Therefore we're calling checkForUpdates right after the
+      // subscription to catch these updates that happened
+      // before useSelector had the chance to subscribe to the state.
+      const state = store.getState();
+      if (state !== latestStateRef.current) {
+        checkForUpdates(state);
       }
-    };
 
-    store.subscribe(subscriber);
+      return () => {
+        store.unsubscribe(checkForUpdates);
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [store]);
+    // Maybe do same sanity checks to ensure
+    // that store should always remain the same
 
-    return () => {
-      store.unsubscribe(subscriber);
-    };
-  }, [store, selector, forceRender]);
-  // Maybe do same sanity checks to ensure
-  // that store should always remain the same
-
-  return currentSelectedStateRef.current;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function depsHaveChanged(
-  currentDeps: Array<unknown>,
-  newDeps: Array<unknown>
-): boolean {
-  if (currentDeps.length !== newDeps.length) {
-    return true;
-  }
-
-  const zippedDeps = zip(currentDeps, newDeps);
-  return zippedDeps.some(
-    ([currentDependency, newDependency]: [unknown, unknown]) =>
-      currentDependency !== newDependency
-  );
+    return latestSelectedStateRef.current!;
+  };
 }

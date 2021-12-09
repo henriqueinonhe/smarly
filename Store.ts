@@ -23,15 +23,31 @@ export class Store<S> {
     this.notifySubscribers();
   }
 
-  public notifySubscribers(): void {
+  private notifySubscribers(): void {
     this.subscribers.forEach((subscriber) => subscriber(this.state));
   }
 
   public subscribe(subscriber: Subscriber<S>): void {
+    if (process.env.NODE_ENV !== "production") {
+      if (this.subscribers.has(subscriber)) {
+        throw new Error(
+          `You're trying to subscribe the same subscriber twice!`
+        );
+      }
+    }
+
     this.subscribers.add(subscriber);
   }
 
   public unsubscribe(subscriber: Subscriber<S>): void {
+    if (process.env.NODE_ENV !== "production") {
+      if (!this.subscribers.has(subscriber)) {
+        throw new Error(
+          `You're trying to unsubscribe a function that is not subscribed!`
+        );
+      }
+    }
+
     this.subscribers.delete(subscriber);
   }
 
